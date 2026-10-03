@@ -493,11 +493,17 @@ EOF
 
 install_via_dkms() {
     print_step "Installing driver via DKMS..."
-    
+
+    # Target the kernel currently running on this system, not every kernel
+    # installed or the kernel selected by DKMS's defaults.
+    local kernel_version
+    kernel_version="$(uname -r)"
+    print_info "Target kernel: $kernel_version"
+
     # Remove existing DKMS installation if present
     if dkms status | grep -q "${DRV_NAME}/${DRV_VERSION}"; then
         print_info "Removing existing DKMS installation..."
-        dkms remove "${DRV_NAME}/${DRV_VERSION}" --all >> "$LOG_FILE" 2>&1 || true
+        dkms remove "${DRV_NAME}/${DRV_VERSION}" -k "$kernel_version" >> "$LOG_FILE" 2>&1 || true
     fi
     
     # Clean up old source directory
@@ -517,7 +523,7 @@ install_via_dkms() {
     
     # Build with DKMS
     print_info "Building module (this may take a few minutes)..."
-    if ! dkms build -m "${DRV_NAME}" -v "${DRV_VERSION}" >> "$LOG_FILE" 2>&1; then
+    if ! dkms build -m "${DRV_NAME}" -v "${DRV_VERSION}" -k "$kernel_version" >> "$LOG_FILE" 2>&1; then
         print_error "DKMS build failed!"
         echo ""
         echo "Please check the log file: $LOG_FILE"
@@ -532,10 +538,10 @@ install_via_dkms() {
     
     # Install with DKMS
     print_info "Installing module..."
-    if ! dkms install -m "${DRV_NAME}" -v "${DRV_VERSION}" >> "$LOG_FILE" 2>&1; then
+    if ! dkms install -m "${DRV_NAME}" -v "${DRV_VERSION}" -k "$kernel_version" >> "$LOG_FILE" 2>&1; then
         if grep -qi "override by specifying --force" "$LOG_FILE"; then
             print_warning "Existing AIC8800 modules found for this kernel; retrying DKMS install with --force..."
-            dkms install -m "${DRV_NAME}" -v "${DRV_VERSION}" --force >> "$LOG_FILE" 2>&1
+            dkms install -m "${DRV_NAME}" -v "${DRV_VERSION}" -k "$kernel_version" --force >> "$LOG_FILE" 2>&1
         else
             print_error "DKMS install failed!"
             echo ""
