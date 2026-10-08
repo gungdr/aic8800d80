@@ -19,6 +19,15 @@ This driver supports AIC8800-family chipsets used by devices such as the Tenda U
 
 Added support for devices with Vendor ID 368B (tested).
 
+> [!NOTE]
+> **Tested `2357:0147` hardware (this branch):** TP-Link AIC8800DC USB WiFi,
+> `chip_id=7`, `chip_sub_id=1`, `chip_mcu_id=1` (MCU revision of *this unit*,
+> readback `0x40500000 = 0x09078818`; firmware `zh Aug 08 2022 … gcf79227`).
+> The USB-ID entry itself is MCU-revision-agnostic (routing to the DC path;
+> mcu gating happens at runtime), but **other units sold under the same
+> VID/PID may be a different MCU revision** — check the driver log against
+> the branch-selection note above.
+
 Tested on Linux kernel 6.16 with Ubuntu 25.04 and 6.1.0.27 with Debian 12.
 
 The same driver supports Wi-Fi-only adapters and Wi-Fi/Bluetooth combo
@@ -43,6 +52,20 @@ probe support is unavailable.
 
 ### Disclaimer
 I did not develop this software, The code is sourced from the Tenda U11 driver. I only made some modifications to the code to adapt it to newer kernel versions. Apart from compilation issues, I am unable to address other problems.
+
+### License
+
+The driver source is distributed under the GNU General Public License version 2
+(`GPL-2.0-only`); see [LICENSE](LICENSE). Preserve the copyright and license
+notices in individual files.
+
+The license text is copied verbatim from Radxa's
+[`src/LICENSE`](https://github.com/radxa-pkg/aic8800/blob/969601fd69b5c33f965558c9e90633067733e8c1/src/LICENSE).
+The [upstream licensing commit](https://github.com/radxa-pkg/aic8800/commit/969601fd69b5c33f965558c9e90633067733e8c1)
+records AIC's approval to license the released driver source under GPLv2.
+Radxa's [current copyright metadata](https://github.com/radxa-pkg/aic8800/blob/d13d07963cd15d731e2895e8288a04cca6152ac9/debian/copyright)
+assigns GPL-2 to `src/*` and the same license to driver patches; its root
+GPL-3.0-or-later license covers Radxa's packaging files.
 
 ### Attention
 Before installing the driver, delete all aic8800-related folders under /lib/firmware. Using an incorrect firmware version may cause the system to freeze.
