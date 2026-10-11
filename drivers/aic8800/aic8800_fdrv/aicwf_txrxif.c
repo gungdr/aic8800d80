@@ -621,7 +621,8 @@ int aicwf_process_rxframes(struct aicwf_rx_priv *rx_priv)
                     if(msg == NULL){
                         txrx_err("no more space for msg!\n");
                         aicwf_prealloc_rxbuff_free(buffer, &rx_priv->rxbuff_lock);
-                        return -EBADE;
+                        atomic_dec(&rx_priv->rx_cnt);
+                        continue;
                     }
                     memcpy(msg, data, aggr_len + 4);
 
@@ -697,7 +698,8 @@ int aicwf_process_rxframes(struct aicwf_rx_priv *rx_priv)
                 if(msg == NULL){
                     txrx_err("no more space for msg!\n");
                     aicwf_prealloc_rxbuff_free(buffer, &rx_priv->rxbuff_lock);
-                    return -EBADE;
+                    atomic_dec(&rx_priv->rx_cnt);
+                    continue;
                 }
                 memcpy(msg, data, aggr_len + 4);
 
