@@ -1409,6 +1409,9 @@ static int aicwf_usb_bus_txmsg(struct device *dev, u8 *buf, u32 len)
 {
     int ret = 0;
     struct aicwf_bus *bus_if = dev_get_drvdata(dev);
+    /* Normal command teardown keeps drvdata valid until its users stop. */
+    if (bus_if == NULL)
+        return -ENODEV;
     struct aic_usb_dev *usb_dev = bus_if->bus_priv.usb;
 
     if (usb_dev->state != USB_UP_ST)
@@ -1667,6 +1670,9 @@ static int aicwf_usb_bus_txdata(struct device *dev, struct sk_buff *pkt)
     uint prio;
     int ret = -EBADE;
     struct aicwf_bus *bus_if = dev_get_drvdata(dev);
+    /* Reject a TX callback without an attached bus. */
+    if (bus_if == NULL)
+        return -ENODEV;
     struct aic_usb_dev *usbdev = bus_if->bus_priv.usb;
 
     //printk("%s\n", __func__);
@@ -1703,6 +1709,9 @@ static int aicwf_usb_bus_txdata(struct device *dev, struct sk_buff *skb)
     int ret = 0;
     unsigned long flags;
     struct aicwf_bus *bus_if = dev_get_drvdata(dev);
+    /* Reject a TX callback without an attached bus. */
+    if (bus_if == NULL)
+        return -ENODEV;
     struct aic_usb_dev *usb_dev = bus_if->bus_priv.usb;
     struct rwnx_txhdr *txhdr = (struct rwnx_txhdr *)skb->data;
     struct rwnx_hw *rwnx_hw = usb_dev->rwnx_hw;
@@ -1946,9 +1955,13 @@ void aicwf_usb_cancel_all_urbs(struct aic_usb_dev *usb_dev){
 static void aicwf_usb_bus_stop(struct device *dev)
 {
     struct aicwf_bus *bus_if = dev_get_drvdata(dev);
-    struct aic_usb_dev *usb_dev = bus_if->bus_priv.usb;
+    struct aic_usb_dev *usb_dev;
 
 	AICWFDBG(LOGINFO, "%s\r\n", __func__);
+    /* Normal teardown clears drvdata after stop and the remaining cleanup. */
+    if (bus_if == NULL)
+        return;
+    usb_dev = bus_if->bus_priv.usb;
     if (usb_dev == NULL)
         return;
 

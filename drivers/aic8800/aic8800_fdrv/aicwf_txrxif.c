@@ -210,6 +210,12 @@ void aicwf_bus_deinit(struct device *dev)
 	AICWFDBG(LOGINFO, "%s Enter\r\n", __func__);
 
     bus_if = dev_get_drvdata(dev);
+    /* Probe rollback can call deinit again after aicwf_bus_init() fails.
+     * A completed teardown clears drvdata so sequential calls are harmless. */
+    if (!bus_if) {
+        AICWFDBG(LOGINFO, "%s: already deinitialized, skip\n", __func__);
+        return;
+    }
     aicwf_bus_stop(bus_if);
 
 #ifdef AICWF_USB_SUPPORT
@@ -259,6 +265,11 @@ void aicwf_bus_deinit(struct device *dev)
 #ifdef CONFIG_TX_TASKLET//AIDEN tasklet
 	tasklet_kill(&usb->xmit_tasklet);
 #endif
+
+    /* Keep drvdata valid through platform callbacks, the TX thread join,
+     * and RX/command teardown. Clear it only after these users have stopped.
+     * The caller still serializes teardown and frees the bus object. */
+    dev_set_drvdata(dev, NULL);
 
 	AICWFDBG(LOGINFO, "%s Exit \n", __func__);
 }

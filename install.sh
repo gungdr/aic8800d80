@@ -9,7 +9,7 @@
 # FIX: Corrected DKMS module configuration for aic8800_fdrv
 #############################################################################
 
-set -e # Exit on error
+set -eE  # Exit on error and run the ERR trap inside functions
 
 # Color definitions
 readonly RED='\033[0;31m'
@@ -124,17 +124,30 @@ check_secure_boot() {
     if mokutil --sb-state 2>/dev/null | grep -qi "SecureBoot enabled"; then
       secure_boot_enabled=true
     fi
-  fi
-
-  # Method 2: Check via EFI variables (fallback)
-  if [ "$secure_boot_enabled" = false ] && [ -d /sys/firmware/efi ]; then
-    local secureboot_files=(/sys/firmware/efi/efivars/SecureBoot-*)
-    if [ -f "${secureboot_files[0]}" ]; then
-      local sb_value
-      sb_value=$(od -An -t u1 "${secureboot_files[0]}" 2>/dev/null | awk '{print $NF}')
-      if [ "$sb_value" = "1" ]; then
-        secure_boot_enabled=true
-      fi
+    
+    if [ "$secure_boot_enabled" = true ]; then
+        echo ""
+        echo -e "${YELLOW}╔════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║                  SECURE BOOT IS ENABLED                        ║${NC}"
+        echo -e "${YELLOW}╚════════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo "The driver may not load automatically due to Secure Boot restrictions."
+        echo "Third-party modules require signing or Secure Boot must be disabled."
+        echo ""
+        echo -e "${CYAN}Options:${NC}"
+        echo "  1. Disable Secure Boot in BIOS/UEFI settings (recommended)"
+        echo "  2. Sign the module manually (advanced)"
+        echo "  3. Continue installation anyway (module may fail to load)"
+        echo ""
+        local choice
+        read -r -p "Continue installation? (y/N): " choice || choice="n"
+        if [[ ! "$choice" =~ ^[Yy]$ ]]; then
+            print_info "Installation cancelled by user."
+            exit 0
+        fi
+        print_warning "Continuing with Secure Boot enabled..."
+    else
+        print_success "Secure Boot is disabled or not present."
     fi
   fi
 
@@ -221,80 +234,80 @@ kernel_build_tree_available() {
 }
 
 install_dependencies() {
-  local pkg_manager="$1"
-  local install_kernel_headers=true
+    local pkg_manager="$1"
+    local install_kernel_headers=true
+    
+    print_step "Installing dependencies..."
 
-  print_step "Installing dependencies..."
-
-  if kernel_build_tree_available; then
-    install_kernel_headers=false
-    print_info "Kernel build tree already exists; skipping generic kernel headers package."
-  elif is_volumio; then
-    install_kernel_headers=false
-    print_info "Volumio detected; skipping generic kernel headers package."
-  fi
-
-  case "$pkg_manager" in
-  apt)
-    print_info "Updating package database..."
-    run_logged "Package database update" apt-get update
-
-    local -a packages=(dkms build-essential mokutil eject usb-modeswitch)
-    if [ "$install_kernel_headers" = true ]; then
-      packages+=("linux-headers-$(uname -r)")
+    if kernel_build_tree_available; then
+        install_kernel_headers=false
+        print_info "Kernel build tree already exists; skipping generic kernel headers package."
+    elif is_volumio; then
+        install_kernel_headers=false
+        print_info "Volumio detected; skipping generic kernel headers package."
     fi
-    print_info "Installing: ${packages[*]}..."
-    run_logged "Dependency installation" env DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
-    ;;
+    
+    case "$pkg_manager" in
+        apt)
+            print_info "Updating package database..."
+            run_logged "Package database update" apt-get update
 
-  dnf)
-    local -a packages=(dkms make gcc mokutil util-linux usb_modeswitch)
-    if [ "$install_kernel_headers" = true ]; then
-      packages+=(kernel-devel kernel-headers)
-    fi
-    print_info "Installing: ${packages[*]}..."
-    run_logged "Dependency installation" dnf install -y "${packages[@]}"
-    ;;
-
-  yum)
-    local -a packages=(dkms make gcc mokutil util-linux usb_modeswitch)
-    if [ "$install_kernel_headers" = true ]; then
-      packages+=(kernel-devel)
-    fi
-    print_info "Enabling EPEL repository..."
-    run_logged "EPEL repository installation" yum install -y epel-release
-    print_info "Installing: ${packages[*]}..."
-    run_logged "Dependency installation" yum install -y "${packages[@]}"
-    ;;
-
-  pacman)
-    print_info "Syncing package database..."
-    run_logged "Package database sync" pacman -Sy --noconfirm
-
-    local -a packages=(dkms base-devel mokutil util-linux usb_modeswitch)
-    if [ "$install_kernel_headers" = true ]; then
-      packages+=(linux-headers)
-    fi
-    print_info "Installing: ${packages[*]}..."
-    run_logged "Dependency installation" pacman -S --needed --noconfirm "${packages[@]}"
-    ;;
-
-  zypper)
-    local -a packages=(dkms make gcc mokutil util-linux usb_modeswitch)
-    if [ "$install_kernel_headers" = true ]; then
-      packages+=(kernel-devel)
-    fi
-    print_info "Installing: ${packages[*]}..."
-    run_logged "Dependency installation" zypper --non-interactive install "${packages[@]}"
-    ;;
-
-  *)
-    print_error "Unsupported package manager: $pkg_manager"
-    exit 1
-    ;;
-  esac
-
-  print_success "Dependencies installed successfully."
+            local -a packages=(dkms build-essential mokutil eject usb-modeswitch)
+            if [ "$install_kernel_headers" = true ]; then
+                packages+=("linux-headers-$(uname -r)")
+            fi
+            print_info "Installing: ${packages[*]}..."
+            run_logged "Dependency installation" env DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+            ;;
+            
+        dnf)
+            local -a packages=(dkms make gcc mokutil util-linux usb_modeswitch)
+            if [ "$install_kernel_headers" = true ]; then
+                packages+=(kernel-devel kernel-headers)
+            fi
+            print_info "Installing: ${packages[*]}..."
+            run_logged "Dependency installation" dnf install -y "${packages[@]}"
+            ;;
+            
+        yum)
+            local -a packages=(dkms make gcc mokutil util-linux usb_modeswitch)
+            if [ "$install_kernel_headers" = true ]; then
+                packages+=(kernel-devel)
+            fi
+            print_info "Enabling EPEL repository..."
+            run_logged "EPEL repository installation" yum install -y epel-release
+            print_info "Installing: ${packages[*]}..."
+            run_logged "Dependency installation" yum install -y "${packages[@]}"
+            ;;
+            
+        pacman)
+            local -a packages=(dkms base-devel mokutil util-linux usb_modeswitch)
+            if [ "$install_kernel_headers" = true ]; then
+                packages+=(linux-headers)
+            fi
+            print_info "Installing: ${packages[*]}..."
+            if ! run_logged "Dependency installation" pacman -S --needed --noconfirm "${packages[@]}"; then
+                print_error "Check the pacman errors above. If the package database is stale, run 'sudo pacman -Syu', reboot if the kernel was updated, then rerun this installer."
+                return 1
+            fi
+            ;;
+            
+        zypper)
+            local -a packages=(dkms make gcc mokutil util-linux usb_modeswitch)
+            if [ "$install_kernel_headers" = true ]; then
+                packages+=(kernel-devel)
+            fi
+            print_info "Installing: ${packages[*]}..."
+            run_logged "Dependency installation" zypper --non-interactive install "${packages[@]}"
+            ;;
+            
+        *)
+            print_error "Unsupported package manager: $pkg_manager"
+            exit 1
+            ;;
+    esac
+    
+    print_success "Dependencies installed successfully."
 }
 
 check_kernel_build_tree() {
@@ -380,9 +393,50 @@ cleanup_legacy_bluetooth_config() {
 }
 
 install_firmware() {
-  print_step "Installing firmware..."
+    print_step "Installing firmware..."
 
-  local fw_base="${SCRIPT_DIR}/fw"
+    local fw_base="${SCRIPT_DIR}/fw"
+
+    if [ ! -d "$fw_base" ]; then
+        print_error "Firmware directory not found: $fw_base"
+        echo "Please ensure you're running the script from the repository root."
+        exit 1
+    fi
+
+    # Validate the source before changing any installed firmware or config.
+    local -a fw_dirs=()
+    local fw_dir
+    for fw_dir in "$fw_base"/aic8800*; do
+        [ -d "$fw_dir" ] || continue
+        if [ -z "$(find "$fw_dir" -type f -name '*.bin' -print -quit)" ]; then
+            print_error "No firmware binaries found in $fw_dir; existing firmware has not been changed."
+            exit 1
+        fi
+        fw_dirs+=("$fw_dir")
+    done
+    if [ "${#fw_dirs[@]}" -eq 0 ]; then
+        print_error "No firmware directories found in $fw_base; existing firmware has not been changed."
+        exit 1
+    fi
+
+    cleanup_legacy_bluetooth_config
+
+    # Remove old firmware versions
+    if [ -d "/lib/firmware" ] && [ -n "$(find /lib/firmware -maxdepth 1 -name 'aic8800*' -type d 2>/dev/null)" ]; then
+        print_info "Removing existing firmware..."
+        rm -rf /lib/firmware/aic8800* >> "$LOG_FILE" 2>&1
+    fi
+
+    # Copy all firmware variants
+    print_info "Installing firmware for all chip variants..."
+    for fw_dir in "${fw_dirs[@]}"; do
+        if [ -d "$fw_dir" ]; then
+            local fw_name=$(basename "$fw_dir")
+            local fw_dest="/lib/firmware/$fw_name"
+            print_info "Copying $fw_name firmware to $fw_dest..."
+            cp -r "$fw_dir" "$fw_dest" >> "$LOG_FILE" 2>&1
+        fi
+    done
 
   if [ ! -d "$fw_base" ]; then
     print_error "Firmware directory not found: $fw_base"
@@ -676,38 +730,73 @@ load_module() {
 #############################################################################
 
 verify_installation() {
-  print_step "Verifying installation..."
+    print_step "Verifying installation..."
+    
+    # Check DKMS status
+    local dkms_status
+    dkms_status=$(dkms status "${DRV_NAME}/${DRV_VERSION}" 2>/dev/null || echo "not found")
+    
+    if echo "$dkms_status" | grep -q "installed"; then
+        print_success "DKMS module registered: $dkms_status"
+    else
+        print_warning "DKMS status unclear: $dkms_status"
+    fi
+    
+    # Check if the Wi-Fi module is loaded
+    if lsmod | grep -q "$MODULE_NAME"; then
+        print_success "Wi-Fi kernel module is loaded."
+    else
+        print_info "Wi-Fi module not currently loaded (this is OK if no hardware is connected)."
+    fi
 
-  # Check DKMS status
-  local dkms_status
-  dkms_status=$(dkms status "${DRV_NAME}/${DRV_VERSION}" 2>/dev/null || echo "not found")
+    if lsmod | awk '{print $1}' | grep -qx 'btusb' || compgen -G '/sys/class/bluetooth/hci*' > /dev/null; then
+        print_success "A Bluetooth controller or the standard btusb module is present."
+    else
+        print_info "No Bluetooth controller is present (normal for Wi-Fi-only adapters or when no combo adapter is connected)."
+    fi
 
-  if echo "$dkms_status" | grep -q "installed"; then
-    print_success "DKMS module registered: $dkms_status"
-  else
-    print_warning "DKMS status unclear: $dkms_status"
-  fi
+    if aic_zlp_target_present; then
+        if lsmod | awk '{print $1}' | grep -qx 'aic_zlp_quirk'; then
+            local zlp_hook="unknown"
+            if [ -r /sys/module/aic_zlp_quirk/parameters/hook ]; then
+                zlp_hook=$(cat /sys/module/aic_zlp_quirk/parameters/hook)
+            fi
+            print_success "Bluetooth ACL ZLP quirk is loaded (hook: $zlp_hook)."
+        else
+            print_warning "USB device 368b:8d81 is present but aic_zlp_quirk is not loaded."
+        fi
+    else
+        print_info "Bluetooth ZLP quirk is installed but inactive (no 368b:8d81 device present)."
+    fi
 
-  # Check if the Wi-Fi module is loaded
-  if lsmod | grep -q "$MODULE_NAME"; then
-    print_success "Wi-Fi kernel module is loaded."
-  else
-    print_info "Wi-Fi module not currently loaded (this is OK if no hardware is connected)."
-  fi
+    echo ""
+    print_info "Loaded AIC modules:"
+    lsmod | grep aic || echo "  (none)"
+    
+    # Check firmware
+    local fw_count=0
+    for fw_dir in /lib/firmware/aic8800*; do
+        if [ -d "$fw_dir" ]; then
+            fw_count=$((fw_count + 1))
+        fi
+    done
+    if [ $fw_count -gt 0 ]; then
+        print_success "Firmware installed for $fw_count chip variant(s) in /lib/firmware/"
+    else
+        print_warning "No firmware found in /lib/firmware/"
+    fi
 
-  if lsmod | awk '{print $1}' | grep -qx 'btusb' || compgen -G '/sys/class/bluetooth/hci*' >/dev/null; then
-    print_success "A Bluetooth controller or the standard btusb module is present."
-  else
-    print_info "No Bluetooth controller is present (normal for Wi-Fi-only adapters or when no combo adapter is connected)."
-  fi
+    # Check for wireless interfaces
+    print_info "Checking for wireless interfaces..."
+    if command -v iwconfig &> /dev/null; then
+        iwconfig 2>/dev/null | grep -E "wlan|IEEE" || echo "No wireless interfaces detected (hardware may not be connected)"
+    fi
 
-  if aic_zlp_target_present; then
-    if lsmod | awk '{print $1}' | grep -qx 'aic_zlp_quirk'; then
-      local zlp_hook="unknown"
-      if [ -r /sys/module/aic_zlp_quirk/parameters/hook ]; then
-        zlp_hook=$(cat /sys/module/aic_zlp_quirk/parameters/hook)
-      fi
-      print_success "Bluetooth ACL ZLP quirk is loaded (hook: $zlp_hook)."
+    print_info "Checking for Bluetooth interfaces on combo adapters..."
+    if command -v bluetoothctl &> /dev/null; then
+        bluetoothctl list 2>/dev/null || echo "No Bluetooth interfaces detected (normal for Wi-Fi-only adapters)"
+    elif command -v hciconfig &> /dev/null; then
+        hciconfig 2>/dev/null || echo "No Bluetooth interfaces detected (normal for Wi-Fi-only adapters)"
     else
       print_warning "USB device 368b:8d81 is present but aic_zlp_quirk is not loaded."
     fi
